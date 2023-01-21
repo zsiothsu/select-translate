@@ -90,7 +90,7 @@ public:
         string tl;
     };
 
-    static const int MAX_BUFFER_SIZE = 1000;
+    static const int MAX_BUFFER_SIZE = 5000;
     static char format_buffer[MAX_BUFFER_SIZE];
     static string select_buffer;
     static Options options;
@@ -282,7 +282,7 @@ public:
         Translate::getSelect();
         src = Translate::select_buffer;
 
-        if(src == last_src) {
+        if(src == last_src || src.empty()) {
             dist = last_dist;
             count = cnt;
             return;
@@ -290,7 +290,8 @@ public:
 
         last_src = src;
         src = filter(src);
-        count = ++cnt;
+        cnt++;
+        count = cnt;
         last_dist = dist = googleTranslate(src);
     }
 };
@@ -314,10 +315,10 @@ int main(int argc, char** argv) {
             last_cnt = cnt;
 
             if(Translate::options.clear) cout << CTRL_CLEAR << CTRL_CURINIT;
-            cout << CTRL_BLOOD << "[source]:" << ++cnt << CTRL_RESET << endl;
+            cout << CTRL_BLOOD << "[source]:" << cnt << CTRL_RESET << endl;
             cout << src << endl;
             cout << CTRL_BLOOD << "[translated]" << CTRL_RESET << endl;
-            cout << dist << endl;
+            cout << dist << endl << endl;
         } catch(Exception &e) {
             cout << "Exception:" << e.what() << endl;
             continue;
