@@ -9,6 +9,7 @@
 #include <csignal>
 #include <unistd.h>
 #include <curl/curl.h>
+#include <openssl/md5.h>
 #include "cJSON/cJSON.h"
 using namespace std;
 
@@ -19,12 +20,18 @@ using namespace std;
 #define CTRL_CLEAR "\033[2J"
 #define CTRL_CURINIT "\033[1;1H"
 
+// baidu app id and key, replace them to your owns
+#define BAIDU_APP_ID "12345678"
+#define BAIDU_APP_KEY "12345678"
+
 const char HELP_MSG[]= 
     "usage:\n"
     "    select-translate [options]\n"
     "options:\n"
     "    -c             --clear             clean screen before translation\n"
     "    -d <time/s>    --delay             the time between two translation (default: 3)\n"
+    "    -e <site>      --engine            translate engine (default: google)\n"
+    "                                       [baidu/google]\n"
     "    -s <lang>      --source-language   source language. (default: auto)\n"
     "                                       [Chinese/English/Japanese/Chinese_Simplified\n"
     "                                        /Chinese_traditional/auto]\n"
@@ -88,6 +95,8 @@ public:
         bool clear;
         // sleep time(s)
         int delay;
+        // translate api, baidu or google
+        string engine;
         // source  language
         string sl;
         // target language
@@ -107,6 +116,7 @@ public:
         static struct option long_options[] = {
             {"clear-screeen", no_argument, NULL, 'c'},
             {"delay", required_argument, NULL, 'd'},
+            {"engine", required_argument, NULL, 'e'},
             {"source-language", required_argument, NULL, 's'},
             {"target-language", required_argument, NULL, 't'},
             {"mode", required_argument, NULL, 'm'},
@@ -114,7 +124,7 @@ public:
             {0, 0, 0, 0}
         };
 
-        map<string,string> lang_map = {
+        map<string,string> lang_map_google = {
             {"Chinese", "zh-CN"},
             {"English", "en"},
             {"Japanese", "ja"},
@@ -123,11 +133,22 @@ public:
             {"auto", "auto"}
         };
 
-        while ((opt = getopt_long(argc, argv, "cd:s:l:hm:", long_options, &loidx)) != -1) {
+        map<string,string> lang_map_baidu = {
+            {"Chinese", "zh"},
+            {"English", "en"},
+            {"Japanese", "jp"},
+            {"Chinese_Simplified", "zh"},
+            {"Chinese_Traditional", "zht"},
+            {"auto", "auto"}
+        };
+
+        string src_lang;
+        string dist_lang;
+        while ((opt = getopt_long(argc, argv, "cd:e:s:l:hm:", long_options, &loidx)) != -1) {
             if (opt == 0) {
                 opt = lopt;
             }
-            string arg_string;
+            string arg_string;          
             int arg_int;
             switch (opt) {
                 case 'c':
@@ -138,15 +159,20 @@ public:
                     arg_int = stoi(arg_string);
                     options.delay = arg_int < 0 ? 3 : arg_int;
                     break;
-                case 's':
+                case 'e':
                     arg_string = string(optarg);
-                    if(lang_map.find(arg_string) == lang_map.end()) options.sl = "auto";
-                    else options.sl = lang_map[arg_string];
+                    if(arg_string == "baidu") options.engine = "baidu";
+                    else if (arg_string == "google") options.engine = "google";
+                    else {
+                        cout << "unkown engine: " << arg_string << ". using default: google" << endl;
+                        options.engine = "google";
+                    }
+                    break;
+                case 's':
+                    src_lang = string(optarg);
                     break;
                 case 't':
-                    arg_string = string(optarg);
-                    if(lang_map.find(arg_string) == lang_map.end() || arg_string == "auto") options.tl = "chinese";
-                    else options.tl = lang_map[arg_string];
+                    dist_lang = string(optarg);
                     break;
                 case 'h':
                     cout << HELP_MSG << endl;
@@ -161,6 +187,33 @@ public:
                     break;
             }
         }
+
+        if(options.engine == "google") {
+            if(lang_map_google.find(src_lang) == lang_map_google.end()) options.sl = "auto";
+                else options.sl = lang_map_google[src_lang];
+            if(lang_map_google.find(dist_lang) == lang_map_google.end()) options.tl = lang_map_google["Chinese"];
+                else options.tl = lang_map_google[dist_lang];
+        } else {
+            if(lang_map_baidu.find(src_lang) == lang_map_baidu.end()) options.sl = "auto";
+                else options.sl = lang_map_baidu[src_lang];
+            if(lang_map_baidu.find(dist_lang) == lang_map_baidu.end()) options.tl = lang_map_baidu["Chinese"];
+                else options.tl = lang_map_baidu[dist_lang];
+        }
+
+
+        string mode;
+        if(options.mode) mode = "clipboard";
+        else mode = "selection";
+
+        cout << "settings:" << endl
+             << "clear:           " << (options.clear ? "true" : "false") << endl
+             << "delay:           " << options.delay << endl
+             << "engine:          " << options.engine << endl
+             << "mode:            " << mode << endl
+             << "source language: " << options.sl << endl
+             << "target language: " << options.tl << endl
+             << "\nstart" << endl;
+        sleep(5);
     }
 
     static void getSelect(bool mode) {
@@ -254,7 +307,7 @@ public:
 
                 if(str1 == NULL) {
                     cJSON_Delete(json);
-                    throw Exception("failed to get transalte result");
+                    throw Exception("error: failed to get google transalte result");
                 }
 
                 res += cJSON_GetStringValue(str1);
@@ -264,7 +317,7 @@ public:
 
             return res;
         } else {
-            return "";
+            throw Exception("error: failed to GET translation");
         }
     # else
         return src;
@@ -286,6 +339,85 @@ public:
         return src;
     }
 
+    static string baiduTranslate(string src) {
+        string url = "http://api.fanyi.baidu.com/api/trans/vip/translate?";
+        string param = "appid=%s&q=%s&from=%s&to=%s&salt=%s&sign=%s";
+
+        string appid = BAIDU_APP_ID;
+        string secret_key = BAIDU_APP_KEY;
+
+        string sl = options.sl;
+        string tl = options.tl;
+
+        // calculate md5 sum
+        char salt[60];
+        sprintf(salt, "%d", rand());
+        string sign;
+        sign += appid;
+        sign += src;
+        sign += salt;
+        sign += secret_key;
+        
+        uint8_t mdhex[16];
+        string mdreadable;
+        char tmp[3]={'\0'};
+        MD5((const uint8_t *)sign.c_str(), sign.size(),mdhex);
+        for (int i = 0; i < 16; i++){
+            sprintf(tmp,"%2.2x",mdhex[i]);
+            mdreadable += tmp;
+        }
+
+        src = CodeConvert::urlEncode(src);
+
+        string format = url + param;
+        sprintf(Translate::format_buffer, format.c_str(), 
+            appid.c_str(),
+            src.c_str(),
+            sl.c_str(),
+            tl.c_str(),
+            salt,
+            mdreadable.c_str()
+        );
+
+        #ifdef DEBUG
+            cout << Translate::format_buffer << endl;
+            return src;
+        #endif
+
+        string response;
+        int sta = curlGet(Translate::format_buffer, &response);
+
+        if(sta != -1) {
+            string res;
+            cJSON *json = cJSON_Parse(response.c_str());
+            cJSON *result = cJSON_GetObjectItem(json,"trans_result");
+
+            if(result == NULL) {
+                cJSON_Delete(json);
+                throw Exception("error: failed to get baidu transalte result");
+            }
+
+            int size = cJSON_GetArraySize(result);
+            for(int i = 0; i < size;i++) {
+                cJSON *obji = cJSON_GetArrayItem(result, i);
+                cJSON *str1 = cJSON_GetObjectItem(obji,"dst");
+
+                if(str1 == NULL) {
+                    cJSON_Delete(json);
+                    throw Exception("error: failed to get baidu transalte result");
+                }
+
+                res += cJSON_GetStringValue(str1);
+            }
+
+            cJSON_Delete(json);
+
+            return res;
+        } else {
+            throw Exception("error: failed to GET translation");
+        }     
+    }
+
     static void translate(string &src, string &dist, int &count) {
         static string last_src;
         static string last_dist;
@@ -304,13 +436,17 @@ public:
         src = filter(src);
         cnt++;
         count = cnt;
-        last_dist = dist = googleTranslate(src);
+
+        if(options.engine == "google")
+            last_dist = dist = googleTranslate(src);
+        else
+            last_dist = dist = baiduTranslate(src);
     }
 };
 
 char Translate::format_buffer[Translate::MAX_BUFFER_SIZE] = {};
 string Translate::select_buffer = string();
-Translate::Options Translate::options = {false, 3, "auto", "zh-CN", false};
+Translate::Options Translate::options = {false, 3, "google" ,"auto", "zh-CN", false};
 
 void signalHandler(int sig) {
     if(sig == SIGINT) {
@@ -334,9 +470,9 @@ int main(int argc, char** argv) {
             last_cnt = cnt;
 
             if(Translate::options.clear) cout << CTRL_CLEAR << CTRL_CURINIT;
-            cout << CTRL_BLOOD << "[source]:" << cnt << CTRL_RESET << endl;
-            cout << src << endl;
-            cout << CTRL_BLOOD << "[translated]" << CTRL_RESET << endl;
+            cout << CTRL_BLOOD << "[source language: " << Translate::options.sl <<  "]:" << cnt << CTRL_RESET << endl;
+            cout << src << endl << endl;
+            cout << CTRL_BLOOD << "[target language: " << Translate::options.tl << "]" << CTRL_RESET << endl;
             cout << dist << endl << endl;
         } catch(Exception &e) {
             cout << "Exception:" << e.what() << endl;

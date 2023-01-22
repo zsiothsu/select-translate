@@ -19,7 +19,7 @@ SOURCE_FILE		:= main.cpp cJSON/cJSON.c
 TARGET			:= select-translate
 
 CXXFLAGS		:= -Wall -I cJSON
-LDFLAGS			:= -lstdc++ -lcurl
+LDFLAGS			:= -lstdc++ -lcurl -lcrypto -lssl
 
 all: CXXFLAGS += -O2
 all: $(OUTPUT_DIR)/$(TARGET)
