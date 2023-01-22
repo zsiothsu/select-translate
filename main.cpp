@@ -6,6 +6,7 @@
 #include <cstring>
 #include <locale>
 #include <getopt.h>
+#include <csignal>
 #include <unistd.h>
 #include <curl/curl.h>
 #include "cJSON/cJSON.h"
@@ -23,13 +24,16 @@ const char HELP_MSG[]=
     "    select-translate [options]\n"
     "options:\n"
     "    -c             --clear             clean screen before translation\n"
-    "    -d <time/s>    --delay             the time between two translation (default 3)\n"
-    "    -s <lang>      --source-language   source language. (default auto)\n"
+    "    -d <time/s>    --delay             the time between two translation (default: 3)\n"
+    "    -s <lang>      --source-language   source language. (default: auto)\n"
     "                                       [Chinese/English/Japanese/Chinese_Simplified\n"
     "                                        /Chinese_traditional/auto]\n"
-    "    -t <lang>      --target-language   target language. (default Chinese)\n"
+    "    -t <lang>      --target-language   target language. (default: Chinese)\n"
     "                                       [Chinese/English/Japanese/Chinese_Simplified\n"
     "                                        /Chinese_traditional]\n"
+    "    -m <mode>      --mode              set text from clipboard or selection (default:\n"
+    "                                       selection)\n"
+    "                                       [clipboard/selection]\n"
     "    -h             --help              Display available options.\n";
 
 class Exception : public exception
@@ -88,6 +92,8 @@ public:
         string sl;
         // target language
         string tl;
+        // text from clipboard(true) or select(false)
+        bool mode;
     };
 
     static const int MAX_BUFFER_SIZE = 5000;
@@ -103,6 +109,7 @@ public:
             {"delay", required_argument, NULL, 'd'},
             {"source-language", required_argument, NULL, 's'},
             {"target-language", required_argument, NULL, 't'},
+            {"mode", required_argument, NULL, 'm'},
             {"help", no_argument, NULL, 'h'},
             {0, 0, 0, 0}
         };
@@ -116,7 +123,7 @@ public:
             {"auto", "auto"}
         };
 
-        while ((opt = getopt_long(argc, argv, "cd:s:l:h", long_options, &loidx)) != -1) {
+        while ((opt = getopt_long(argc, argv, "cd:s:l:hm:", long_options, &loidx)) != -1) {
             if (opt == 0) {
                 opt = lopt;
             }
@@ -145,14 +152,19 @@ public:
                     cout << HELP_MSG << endl;
                     exit(0);
                     break;
+                case 'm':
+                    arg_string = string(optarg);
+                    if (arg_string == "clipboard") options.mode = true;
+                    else options.mode = false;
+                    break;
                 default:
                     break;
             }
         }
     }
 
-    static void getSelect() {
-        const char xsel[] = "xsel";
+    static void getSelect(bool mode) {
+        string xsel = string("xsel") + (mode ? " -b" : "");
         char temp_buffer[101];
         int filled_size = 0;
 
@@ -161,7 +173,7 @@ public:
 
         // get "xsel" output
         FILE* output_stream = nullptr;
-        if((output_stream = popen(xsel, "r"))) {
+        if((output_stream = popen(xsel.c_str(), "r"))) {
             while (fgets(temp_buffer, 100, output_stream)) {
                 filled_size += strlen(temp_buffer);
                 Translate::select_buffer += temp_buffer;
@@ -260,8 +272,8 @@ public:
     }
 
     static string filter(string src) {
-        vector<string> from = {"\n", "%", "&", "#"};
-        vector<string> to = {" ", "%25", "%26", "%23"};
+        vector<string> from = {"\n", "\t", "  "};
+        vector<string> to = {" ", " "," "};
 
         for(size_t i = 0; i < from.size(); i++) {
             string f = from[i], t = to[i];
@@ -274,12 +286,12 @@ public:
         return src;
     }
 
-    static void translateFromSelect(string &src, string &dist, int &count) {
+    static void translate(string &src, string &dist, int &count) {
         static string last_src;
         static string last_dist;
         static int cnt = 0;
 
-        Translate::getSelect();
+        Translate::getSelect(Translate::options.mode);
         src = Translate::select_buffer;
 
         if(src == last_src || src.empty()) {
@@ -298,18 +310,25 @@ public:
 
 char Translate::format_buffer[Translate::MAX_BUFFER_SIZE] = {};
 string Translate::select_buffer = string();
-Translate::Options Translate::options = {false, 3, "auto", "zh-CN"};
+Translate::Options Translate::options = {false, 3, "auto", "zh-CN", false};
+
+void signalHandler(int sig) {
+    if(sig == SIGINT) {
+        cout << endl << "Receive SIGINT. Exit." << endl;
+        exit(0);
+    }
+}
 
 int main(int argc, char** argv) {
     Translate::getOption(argc, argv);
-
+    signal(SIGINT,signalHandler);
     while(true) {
         try {
             sleep(Translate::options.delay);
             string src = "hello", dist = "你好";
             static int last_cnt = -1;
             int cnt = 0;
-            Translate::translateFromSelect(src, dist, cnt);
+            Translate::translate(src, dist, cnt);
 
             if(cnt == last_cnt) continue;
             last_cnt = cnt;
