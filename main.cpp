@@ -24,7 +24,7 @@ using namespace std;
 #define BAIDU_APP_ID "12345678"
 #define BAIDU_APP_KEY "12345678"
 
-const char HELP_MSG[]= 
+const char HELP_MSG[]=
     "usage:\n"
     "    select-translate [options]\n"
     "options:\n"
@@ -59,9 +59,9 @@ public:
 
 class CodeConvert {
 public:
-    static uint8_t ToHex(unsigned char x) 
-    { 
-        return  x > 9 ? x + 55 : x + 48; 
+    static uint8_t ToHex(unsigned char x)
+    {
+        return  x > 9 ? x + 55 : x + 48;
     }
 
     static string urlEncode(const string &str) {
@@ -69,10 +69,10 @@ public:
         size_t length = str.length();
         for (size_t i = 0; i < length; i++)
         {
-            if (isalnum((unsigned char)str[i]) || 
+            if (isalnum((unsigned char)str[i]) ||
                 (str[i] == '-') ||
-                (str[i] == '_') || 
-                (str[i] == '.') || 
+                (str[i] == '_') ||
+                (str[i] == '.') ||
                 (str[i] == '~'))
                 strTemp += str[i];
             else if (str[i] == ' ')
@@ -144,11 +144,11 @@ public:
 
         string src_lang;
         string dist_lang;
-        while ((opt = getopt_long(argc, argv, "cd:e:s:l:hm:", long_options, &loidx)) != -1) {
+        while ((opt = getopt_long(argc, argv, "cd:e:s:t:hm:", long_options, &loidx)) != -1) {
             if (opt == 0) {
                 opt = lopt;
             }
-            string arg_string;          
+            string arg_string;
             int arg_int;
             switch (opt) {
                 case 'c':
@@ -191,12 +191,12 @@ public:
         if(options.engine == "google") {
             if(lang_map_google.find(src_lang) == lang_map_google.end()) options.sl = "auto";
                 else options.sl = lang_map_google[src_lang];
-            if(lang_map_google.find(dist_lang) == lang_map_google.end()) options.tl = lang_map_google["Chinese"];
+            if(lang_map_google.find(dist_lang) == lang_map_google.end()) options.tl = lang_map_google["Chinese"], cout << "-s: unknow language: "  << src_lang << endl;
                 else options.tl = lang_map_google[dist_lang];
         } else {
             if(lang_map_baidu.find(src_lang) == lang_map_baidu.end()) options.sl = "auto";
                 else options.sl = lang_map_baidu[src_lang];
-            if(lang_map_baidu.find(dist_lang) == lang_map_baidu.end()) options.tl = lang_map_baidu["Chinese"];
+            if(lang_map_baidu.find(dist_lang) == lang_map_baidu.end()) options.tl = lang_map_baidu["Chinese"], cout << "-t: unknow language: "  << dist_lang << endl;
                 else options.tl = lang_map_baidu[dist_lang];
         }
 
@@ -286,7 +286,7 @@ public:
         src = CodeConvert::urlEncode(src);
 
         string format = url + param;
-        sprintf(Translate::format_buffer, format.c_str(), 
+        sprintf(Translate::format_buffer, format.c_str(),
             sl.c_str(),
             tl.c_str(),
             src.c_str()
@@ -357,7 +357,7 @@ public:
         sign += src;
         sign += salt;
         sign += secret_key;
-        
+
         uint8_t mdhex[16];
         string mdreadable;
         char tmp[3]={'\0'};
@@ -370,7 +370,7 @@ public:
         src = CodeConvert::urlEncode(src);
 
         string format = url + param;
-        sprintf(Translate::format_buffer, format.c_str(), 
+        sprintf(Translate::format_buffer, format.c_str(),
             appid.c_str(),
             src.c_str(),
             sl.c_str(),
@@ -415,7 +415,7 @@ public:
             return res;
         } else {
             throw Exception("error: failed to GET translation");
-        }     
+        }
     }
 
     static void translate(string &src, string &dist, int &count) {
@@ -482,6 +482,6 @@ int main(int argc, char** argv) {
             continue;
         }
     }
-    
+
     return 0;
 }
